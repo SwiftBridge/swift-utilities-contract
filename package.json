@@ -1,0 +1,33 @@
+{
+  "name": "swift-utilities-contract",
+  "version": "1.0.0",
+  "description": "Swift v2 Utilities Smart Contract - Helper functions and batch operations for Base Mainnet",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network base",
+    "deploy:testnet": "hardhat run scripts/deploy.js --network base-sepolia",
+    "verify": "hardhat run scripts/verify.js --network base",
+    "clean": "hardhat clean"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "smart-contracts",
+    "base",
+    "hardhat",
+    "utilities",
+    "batch-operations"
+  ],
+  "author": "Swift v2 Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.1"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+}

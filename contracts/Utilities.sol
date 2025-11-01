@@ -59,7 +59,7 @@ contract Utilities is ReentrancyGuard, Ownable {
     // State variables
     mapping(address => GasEstimate[]) public gasEstimates;
     mapping(address => bool) public authorizedContracts;
-    mapping(address => bool) public emergencyPause;
+    mapping(address => bool) public isPaused;
     
     uint256 public constant MAX_BATCH_SIZE = 50;
     uint256 public constant GAS_LIMIT_BUFFER = 10000;
@@ -75,7 +75,7 @@ contract Utilities is ReentrancyGuard, Ownable {
     }
 
     modifier notPaused() {
-        require(!emergencyPause[msg.sender], "Contract paused");
+        require(!isPaused[msg.sender], "Contract paused");
         _;
     }
 
@@ -314,7 +314,7 @@ contract Utilities is ReentrancyGuard, Ownable {
      */
     function emergencyPause(address _contract) external onlyOwner {
         require(_contract != address(0), "Invalid contract");
-        emergencyPause[_contract] = true;
+        isPaused[_contract] = true;
         emit EmergencyPause(msg.sender, block.timestamp);
     }
 
@@ -324,7 +324,7 @@ contract Utilities is ReentrancyGuard, Ownable {
      */
     function emergencyUnpause(address _contract) external onlyOwner {
         require(_contract != address(0), "Invalid contract");
-        emergencyPause[_contract] = false;
+        isPaused[_contract] = false;
         emit EmergencyUnpause(msg.sender, block.timestamp);
     }
 
@@ -349,28 +349,28 @@ contract Utilities is ReentrancyGuard, Ownable {
     /**
      * @dev Get contract information
      * @param _contract Contract address
-     * @return isContract True if address is a contract
+     * @return hasCode True if address is a contract
      * @return isAuthorized True if contract is authorized
-     * @return isPaused True if contract is paused
+     * @return _isPaused True if contract is paused
      */
-    function getContractInfo(address _contract) 
-        external 
-        view 
+    function getContractInfo(address _contract)
+        external
+        view
         returns (
-            bool isContract,
+            bool hasCode,
             bool isAuthorized,
-            bool isPaused
-        ) 
+            bool _isPaused
+        )
     {
         uint256 size;
         assembly {
             size := extcodesize(_contract)
         }
-        
+
         return (
             size > 0,
             authorizedContracts[_contract],
-            emergencyPause[_contract]
+            isPaused[_contract]
         );
     }
 

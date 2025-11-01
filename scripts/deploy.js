@@ -2,69 +2,54 @@ const hre = require("hardhat");
 const fs = require('fs');
 
 async function main() {
-  console.log("🚀 Deploying Utilities Contract to Base Mainnet...\n");
+  console.log("🚀 Deploying Utilities Contract to Base Sepolia...\n");
 
-  // Get deployer account
   const [deployer] = await hre.ethers.getSigners();
   console.log("📝 Deploying with account:", deployer.address);
 
-  // Check balance
-  const balance = await deployer.getBalance();
-  console.log("💰 Account balance:", hre.ethers.utils.formatEther(balance), "ETH\n");
+  const balance = await hre.ethers.provider.getBalance(deployer.address);
+  console.log("💰 Account balance:", hre.ethers.formatEther(balance), "ETH\n");
 
-  // Deploy Utilities contract
-  const Utilities = await hre.ethers.getContractFactory("Utilities");
+  const Contract = await hre.ethers.getContractFactory("Utilities");
 
   console.log("⏳ Deploying Utilities contract...");
-  const utilities = await Utilities.deploy();
+  const contract = await Contract.deploy();
 
-  await utilities.deployed();
-  console.log("✅ Utilities deployed to:", utilities.address);
+  await contract.waitForDeployment();
+  const contractAddress = await contract.getAddress();
+  console.log("✅ Utilities deployed to:", contractAddress);
 
-  // Wait for block confirmations
   console.log("⏳ Waiting for 5 block confirmations...");
-  await utilities.deployTransaction.wait(5);
+  const deployTx = contract.deploymentTransaction();
+  await deployTx.wait(5);
   console.log("✅ Confirmed!\n");
 
-  // Get deployment info
-  const receipt = await utilities.deployTransaction.wait();
+  const receipt = await deployTx.wait();
 
-  // Save deployment info
   const deploymentInfo = {
-    network: "base-mainnet",
+    network: "base-sepolia",
     contractName: "Utilities",
-    contractAddress: utilities.address,
+    contractAddress: contractAddress,
     deployer: deployer.address,
-    chainId: 8453,
+    chainId: 84532,
     timestamp: new Date().toISOString(),
     blockNumber: receipt.blockNumber,
-    transactionHash: receipt.transactionHash,
+    transactionHash: receipt.hash,
     gasUsed: receipt.gasUsed.toString(),
-    gasPrice: receipt.effectiveGasPrice.toString()
+    gasPrice: receipt.gasPrice.toString()
   };
 
-  // Save to file
-  fs.writeFileSync(
-    'deployment.json',
-    JSON.stringify(deploymentInfo, null, 2)
-  );
+  fs.writeFileSync('deployment.json', JSON.stringify(deploymentInfo, null, 2));
 
   console.log("📄 Deployment info saved to deployment.json\n");
-
   console.log("═══════════════════════════════════════");
   console.log("🎉 DEPLOYMENT SUCCESSFUL!");
   console.log("═══════════════════════════════════════");
-  console.log("Contract:", utilities.address);
+  console.log("Contract:", contractAddress);
   console.log("Gas Used:", receipt.gasUsed.toString());
   console.log("═══════════════════════════════════════\n");
 
-  console.log("📋 Next steps:");
-  console.log("1. Verify contract:");
-  console.log(`   npx hardhat verify --network base ${utilities.address}`);
-  console.log("\n2. Update frontend with contract address");
-  console.log("\n3. Authorize other contracts to interact with Utilities");
-
-  return utilities;
+  return contract;
 }
 
 main()

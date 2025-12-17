@@ -1,6 +1,9 @@
 const hre = require("hardhat");
 const fs = require('fs');
 
+const DEPLOYMENT_FILE = 'deployment.json';
+const BLOCK_CONFIRMATIONS = 5;
+
 async function main() {
   console.log("🚀 Deploying Utilities Contract to Base Sepolia...\n");
 
@@ -19,9 +22,9 @@ async function main() {
   const contractAddress = await contract.getAddress();
   console.log("✅ Utilities deployed to:", contractAddress);
 
-  console.log("⏳ Waiting for 5 block confirmations...");
+  console.log(`⏳ Waiting for ${BLOCK_CONFIRMATIONS} block confirmations...`);
   const deployTx = contract.deploymentTransaction();
-  await deployTx.wait(5);
+  await deployTx.wait(BLOCK_CONFIRMATIONS);
   console.log("✅ Confirmed!\n");
 
   const receipt = await deployTx.wait();
@@ -39,9 +42,9 @@ async function main() {
     gasPrice: receipt.gasPrice.toString()
   };
 
-  fs.writeFileSync('deployment.json', JSON.stringify(deploymentInfo, null, 2));
+  fs.writeFileSync(DEPLOYMENT_FILE, JSON.stringify(deploymentInfo, null, 2));
 
-  console.log("📄 Deployment info saved to deployment.json\n");
+  console.log(`📄 Deployment info saved to ${DEPLOYMENT_FILE}\n`);
   console.log("═══════════════════════════════════════");
   console.log("🎉 DEPLOYMENT SUCCESSFUL!");
   console.log("═══════════════════════════════════════");

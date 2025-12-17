@@ -18,11 +18,6 @@ module.exports = {
     },
   },
   networks: {
-    base: {
-      url: process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org",
-      accounts: accounts,
-      chainId: 8453,
-    },
     "base-sepolia": {
       url: "https://sepolia.base.org",
       accounts: accounts,

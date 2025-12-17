@@ -10,7 +10,8 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 /**
  * @title Utilities
- * @dev A utility contract with helper functions for Swift v2 platform
+ * @notice A utility contract with helper functions for Swift v2 platform
+ * @dev Implements gas estimation, batch processing, and token utilities
  * @author Swift v2 Team
  */
 contract Utilities is ReentrancyGuard, Ownable {
@@ -40,6 +41,24 @@ contract Utilities is ReentrancyGuard, Ownable {
         uint256 timestamp
     );
 
+    event ContractAuthorized(address indexed contractAddress);
+    event AuthorizationRevoked(address indexed contractAddress);
+
+    // Errors
+    error InvalidTarget();
+    error BatchTooLarge();
+    error NoOperations();
+    error InvalidRecipient();
+    error InvalidAmount();
+    error InsufficientETH();
+    error TransferFailed();
+    error InvalidToken();
+    error InvalidSpender();
+    error NotAuthorized();
+    error ContractPaused();
+    error NoBalanceToWithdraw();
+    error TokenTransferFailed();
+
     // Structs
     struct GasEstimate {
         uint256 gasUsed;
@@ -61,39 +80,45 @@ contract Utilities is ReentrancyGuard, Ownable {
     mapping(address => bool) public authorizedContracts;
     mapping(address => bool) public isPaused;
     
+    // Constants
+    /// @dev Maximum number of operations allowed in a single batch
     uint256 public constant MAX_BATCH_SIZE = 50;
+    /// @dev Gas buffer to add to estimates to prevent out-of-gas errors
     uint256 public constant GAS_LIMIT_BUFFER = 10000;
+    /// @dev Duration for which the contract can be emergency paused
     uint256 public constant EMERGENCY_PAUSE_DURATION = 24 hours;
 
     // Modifiers
     modifier onlyAuthorized() {
-        require(
-            authorizedContracts[msg.sender] || msg.sender == owner(),
-            "Not authorized"
-        );
+        if (!authorizedContracts[msg.sender] && msg.sender != owner()) {
+            revert NotAuthorized();
+        }
         _;
     }
 
     modifier notPaused() {
-        require(!isPaused[msg.sender], "Contract paused");
+        if (isPaused[msg.sender]) {
+            revert ContractPaused();
+        }
         _;
     }
 
     constructor() {}
 
     /**
-     * @dev Estimate gas for a transaction
+     * @notice Estimate gas usage for a potential transaction
+     * @dev Simplistic estimation including base cost and data cost
      * @param _target Target contract address
-     * @param _data Transaction data
-     * @param _value ETH value to send
-     * @return estimatedGas Estimated gas usage
+     * @param _data Transaction data payload
+     * @param _value ETH value to send in wei
+     * @return estimatedGas Total estimated gas usage including buffer
      */
     function estimateGas(
         address _target,
-        bytes memory _data,
+        bytes calldata _data,
         uint256 _value
     ) external view returns (uint256 estimatedGas) {
-        require(_target != address(0), "Invalid target");
+        if (_target == address(0)) revert InvalidTarget();
         
         uint256 gasStart = gasleft();
         
@@ -109,12 +134,13 @@ contract Utilities is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Execute multiple operations in a single transaction
-     * @param _operations Array of operations to execute
-     * @return results Array of operation results
+     * @notice Execute multiple operations in a single transaction
+     * @dev Distributes remaining gas among operations
+     * @param _operations Array of BatchOperation structs to execute
+     * @return results Array of BatchOperation structs containing execution results
      */
     function executeBatch(
-        BatchOperation[] memory _operations
+        BatchOperation[] calldata _operations
     ) 
         external 
         payable 
@@ -122,18 +148,19 @@ contract Utilities is ReentrancyGuard, Ownable {
         notPaused 
         returns (BatchOperation[] memory results) 
     {
-        require(_operations.length <= MAX_BATCH_SIZE, "Batch too large");
-        require(_operations.length > 0, "No operations provided");
+        uint256 length = _operations.length;
+        if (length > MAX_BATCH_SIZE) revert BatchTooLarge();
+        if (length == 0) revert NoOperations();
 
         uint256 gasStart = gasleft();
-        results = new BatchOperation[](_operations.length);
+        results = new BatchOperation[](length);
 
-        for (uint256 i = 0; i < _operations.length; i++) {
+        for (uint256 i = 0; i < length;) {
             BatchOperation memory operation = _operations[i];
             
             (bool success, bytes memory returnData) = operation.target.call{
                 value: operation.value,
-                gas: gasleft() / (_operations.length - i) // Distribute remaining gas
+                gas: gasleft() / (length - i) // Distribute remaining gas
             }(operation.data);
 
             results[i] = BatchOperation({
@@ -143,6 +170,7 @@ contract Utilities is ReentrancyGuard, Ownable {
                 success: success,
                 returnData: returnData
             });
+            unchecked { ++i; }
         }
 
         uint256 gasUsed = gasStart - gasleft();
@@ -157,30 +185,34 @@ contract Utilities is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Optimize gas usage for multiple operations
+     * @notice Reorder operations to potentially optimize gas usage
+     * @dev Currently performs a simple pass-through; placeholder for advanced sorting
      * @param _operations Array of operations to optimize
-     * @return optimizedOperations Optimized operations
+     * @return optimizedOperations The reordered array of operations
      */
     function optimizeGasUsage(
-        BatchOperation[] memory _operations
+        BatchOperation[] calldata _operations
     ) external pure returns (BatchOperation[] memory optimizedOperations) {
         // This is a simplified optimization
         // In practice, you'd implement more sophisticated algorithms
         
-        optimizedOperations = new BatchOperation[](_operations.length);
+        uint256 length = _operations.length;
+        optimizedOperations = new BatchOperation[](length);
         
         // Sort operations by gas cost (simplified)
-        for (uint256 i = 0; i < _operations.length; i++) {
+        for (uint256 i = 0; i < length;) {
             optimizedOperations[i] = _operations[i];
+            unchecked { ++i; }
         }
         
         return optimizedOperations;
     }
 
     /**
-     * @dev Check if address is a contract
+     * @notice Check if an address is a contract
+     * @dev Checks code size; note that this returns false for contracts in construction
      * @param _address Address to check
-     * @return True if address is a contract
+     * @return True if the address has code size > 0, false otherwise
      */
     function isContract(address _address) external view returns (bool) {
         uint256 size;
@@ -191,10 +223,10 @@ contract Utilities is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Get contract balance
-     * @param _token Token address (address(0) for ETH)
-     * @param _account Account address
-     * @return balance Token balance
+     * @notice Get the ETH or ERC20 token balance of an account
+     * @param _token Token address (use address(0) for ETH)
+     * @param _account Account address to query
+     * @return balance The balance of the token or ETH
      */
     function getBalance(address _token, address _account) external view returns (uint256 balance) {
         if (_token == address(0)) {
@@ -205,23 +237,24 @@ contract Utilities is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Transfer tokens or ETH
-     * @param _token Token address (address(0) for ETH)
+     * @notice Transfer tokens or ETH to a recipient
+     * @dev Handles both ETH (address(0)) and ERC20 transfers
+     * @param _token Token address (use address(0) for ETH)
      * @param _to Recipient address
-     * @param _amount Amount to transfer
+     * @param _amount Amount to transfer in wei or token units
      */
     function transfer(
         address _token,
         address _to,
         uint256 _amount
     ) external payable nonReentrant {
-        require(_to != address(0), "Invalid recipient");
-        require(_amount > 0, "Amount must be greater than 0");
+        if (_to == address(0)) revert InvalidRecipient();
+        if (_amount == 0) revert InvalidAmount();
 
         if (_token == address(0)) {
-            require(msg.value >= _amount, "Insufficient ETH");
+            if (msg.value < _amount) revert InsufficientETH();
             (bool success, ) = payable(_to).call{value: _amount}("");
-            require(success, "ETH transfer failed");
+            if (!success) revert TransferFailed();
         } else {
             IERC20(_token).transferFrom(msg.sender, _to, _amount);
         }
@@ -240,18 +273,18 @@ contract Utilities is ReentrancyGuard, Ownable {
         address _spender,
         uint256 _amount
     ) external onlyOwner {
-        require(_token != address(0), "Invalid token");
-        require(_spender != address(0), "Invalid spender");
+        if (_token == address(0)) revert InvalidToken();
+        if (_spender == address(0)) revert InvalidSpender();
 
         IERC20(_token).approve(_spender, _amount);
     }
 
     /**
-     * @dev Get gas estimates for a user
-     * @param _user User address
-     * @param _offset Starting index
-     * @param _limit Number of estimates to return
-     * @return estimates Array of gas estimates
+     * @notice Retrieve historical gas estimates for a user
+     * @param _user User address to query
+     * @param _offset Index to start retrieving from (pagination)
+     * @param _limit Maximum number of estimates to return
+     * @return estimates Array of GasEstimate structs
      */
     function getGasEstimates(
         address _user,
@@ -271,18 +304,20 @@ contract Utilities is ReentrancyGuard, Ownable {
         }
 
         estimates = new GasEstimate[](end - _offset);
-        for (uint256 i = _offset; i < end; i++) {
+        for (uint256 i = _offset; i < end;) {
             estimates[i - _offset] = userEstimates[i];
+            unchecked { ++i; }
         }
 
         return estimates;
     }
 
     /**
-     * @dev Calculate gas savings
-     * @param _user User address
-     * @return totalSavings Total gas savings
-     * @return averageSavings Average gas savings per transaction
+     * @notice Calculate potential gas savings for a user
+     * @dev Based on a simplified 10% savings assumption
+     * @param _user User address to calculate savings for
+     * @return totalSavings Total estimated gas tokens saved
+     * @return averageSavings Average gas saved per transaction
      */
     function calculateGasSavings(address _user) 
         external 
@@ -297,8 +332,9 @@ contract Utilities is ReentrancyGuard, Ownable {
         }
 
         uint256 totalGas = 0;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length;) {
             totalGas += userEstimates[i].gasUsed;
+            unchecked { ++i; }
         }
 
         // Simplified calculation - in practice, you'd compare against individual transactions
@@ -313,7 +349,7 @@ contract Utilities is ReentrancyGuard, Ownable {
      * @param _contract Contract address to pause
      */
     function emergencyPause(address _contract) external onlyOwner {
-        require(_contract != address(0), "Invalid contract");
+        if (_contract == address(0)) revert InvalidTarget();
         isPaused[_contract] = true;
         emit EmergencyPause(msg.sender, block.timestamp);
     }
@@ -323,7 +359,7 @@ contract Utilities is ReentrancyGuard, Ownable {
      * @param _contract Contract address to unpause
      */
     function emergencyUnpause(address _contract) external onlyOwner {
-        require(_contract != address(0), "Invalid contract");
+        if (_contract == address(0)) revert InvalidTarget();
         isPaused[_contract] = false;
         emit EmergencyUnpause(msg.sender, block.timestamp);
     }
@@ -333,8 +369,9 @@ contract Utilities is ReentrancyGuard, Ownable {
      * @param _contract Contract address to authorize
      */
     function authorizeContract(address _contract) external onlyOwner {
-        require(_contract != address(0), "Invalid contract");
+        if (_contract == address(0)) revert InvalidTarget();
         authorizedContracts[_contract] = true;
+        emit ContractAuthorized(_contract);
     }
 
     /**
@@ -342,8 +379,9 @@ contract Utilities is ReentrancyGuard, Ownable {
      * @param _contract Contract address to revoke
      */
     function revokeContractAuthorization(address _contract) external onlyOwner {
-        require(_contract != address(0), "Invalid contract");
+        if (_contract == address(0)) revert InvalidTarget();
         authorizedContracts[_contract] = false;
+        emit AuthorizationRevoked(_contract);
     }
 
     /**
@@ -379,10 +417,10 @@ contract Utilities is ReentrancyGuard, Ownable {
      */
     function withdraw() external onlyOwner nonReentrant {
         uint256 balance = address(this).balance;
-        require(balance > 0, "No balance to withdraw");
+        if (balance == 0) revert NoBalanceToWithdraw();
 
         (bool success, ) = payable(owner()).call{value: balance}("");
-        require(success, "Withdraw failed");
+        if (!success) revert TransferFailed();
     }
 
     /**
@@ -391,10 +429,10 @@ contract Utilities is ReentrancyGuard, Ownable {
      * @param _amount Amount to withdraw
      */
     function withdrawTokens(address _token, uint256 _amount) external onlyOwner nonReentrant {
-        require(_token != address(0), "Invalid token");
-        require(_amount > 0, "Amount must be greater than 0");
+        if (_token == address(0)) revert InvalidToken();
+        if (_amount == 0) revert InvalidAmount();
 
         bool success = IERC20(_token).transfer(owner(), _amount);
-        require(success, "Token transfer failed");
+        if (!success) revert TokenTransferFailed();
     }
 }

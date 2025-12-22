@@ -14,8 +14,14 @@ describe("UtilitiesV2 Integration", function () {
 
     describe("Gas Estimation", function () {
         it("Should estimate gas for a simple transaction", async function () {
-            const estimated = await utilities.estimateGas(otherAccount.address, "0x", 0);
-            expect(estimated).to.be.gt(21000);
+            const MockToken = await ethers.getContractFactory("MockToken");
+            const mockToken = await MockToken.deploy("Mock", "MCK");
+
+            // Encode a simple transfer call
+            const data = mockToken.interface.encodeFunctionData("transfer", [otherAccount.address, 100]);
+
+            const estimated = await utilities.estimateGas(await mockToken.getAddress(), data, 0);
+            expect(estimated).to.be.gt(0);
         });
 
         it("Should revert on invalid target", async function () {

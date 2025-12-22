@@ -53,13 +53,7 @@ describe("Utilities", function () {
                 }
             ];
 
-            // Send ETH to contract first
-            await owner.sendTransaction({
-                to: await utilities.getAddress(),
-                value: ethers.parseEther("1.0")
-            });
-
-            await expect(utilities.executeBatch(operations)).to.emit(utilities, "BatchProcessed");
+            await expect(utilities.executeBatch(operations, { value: ethers.parseEther("1.0") })).to.emit(utilities, "BatchProcessed");
         });
     });
 });

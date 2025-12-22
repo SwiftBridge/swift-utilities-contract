@@ -13,12 +13,12 @@ abstract contract Pausable is AccessControl {
         _;
     }
 
-    function emergencyPause(address _contract) external onlyOwner {
+    function emergencyPause(address _contract) public virtual onlyOwner {
         if (_contract == address(0)) revert Errors.InvalidTarget();
         _isPaused[_contract] = true;
     }
 
-    function emergencyUnpause(address _contract) external onlyOwner {
+    function emergencyUnpause(address _contract) public virtual onlyOwner {
         if (_contract == address(0)) revert Errors.InvalidTarget();
         _isPaused[_contract] = false;
     }

@@ -13,6 +13,9 @@ import "./libraries/Constants.sol";
 import "./types/DataTypes.sol";
 import "./types/Events.sol";
 import "./types/Errors.sol";
+import "./types/Errors.sol";
+import "./base/AccessControl.sol";
+import "./interfaces/IEmergency.sol";
 
 contract UtilitiesV2 is IUtilitiesV2, Pausable, ReentrancyGuard, Events {
     mapping(address => DataTypes.GasEstimate[]) public gasEstimates;
@@ -110,5 +113,22 @@ contract UtilitiesV2 is IUtilitiesV2, Pausable, ReentrancyGuard, Events {
             size := extcodesize(_address)
         }
         return size > 0;
+    }
+
+    // Solves inheritance conflict between AccessControl/Pausable and IEmergency
+    function authorizeContract(address _contract) public override(AccessControl, IEmergency) {
+        super.authorizeContract(_contract);
+    }
+
+    function revokeContractAuthorization(address _contract) public override(AccessControl, IEmergency) {
+        super.revokeContractAuthorization(_contract);
+    }
+
+    function emergencyPause(address _contract) public override(Pausable, IEmergency) {
+        super.emergencyPause(_contract);
+    }
+
+    function emergencyUnpause(address _contract) public override(Pausable, IEmergency) {
+        super.emergencyUnpause(_contract);
     }
 }

@@ -28,12 +28,12 @@ abstract contract AccessControl {
         return _owner;
     }
 
-    function authorizeContract(address _contract) external onlyOwner {
+    function authorizeContract(address _contract) public virtual onlyOwner {
         if (_contract == address(0)) revert Errors.InvalidTarget();
         _authorizedContracts[_contract] = true;
     }
 
-    function revokeContractAuthorization(address _contract) external onlyOwner {
+    function revokeContractAuthorization(address _contract) public virtual onlyOwner {
         if (_contract == address(0)) revert Errors.InvalidTarget();
         _authorizedContracts[_contract] = false;
     }
